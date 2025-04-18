@@ -1,8 +1,6 @@
 const themeToggle = document.getElementById('theme-toggle');
 const body = document.body;
 let templateZip = null;
-let uploadedImageBlob = null;
-let totemBaseImg = new Image();
 const status = document.getElementById('status');
 const skinInput = document.getElementById('skin-input');
 const downloadBtn = document.getElementById('download-btn');
@@ -35,8 +33,6 @@ function uuidv4() {
             localStorage.setItem('cachedTotemTemplate', btoa(String.fromCharCode(...new Uint8Array(buffer))));
         }
         if (!templateZip.file('textures/entity/totem.png')) throw new Error('Template missing required files');
-        const baseBlob = await templateZip.file('textures/items/totem.png').async('blob');
-        totemBaseImg.src = URL.createObjectURL(baseBlob);
         status.textContent = 'Ready to generate!';
     } catch (error) {
         console.error('Template error:', error);
@@ -50,11 +46,8 @@ skinInput.addEventListener('change', (e) => {
     const reader = new FileReader();
     reader.onload = (event) => {
         skinImg.onload = () => {
-            if (!totemBaseImg.complete) return totemBaseImg.onload = skinImg.onload;
             ctx.clearRect(0, 0, 64, 64);
-            ctx.drawImage(totemBaseImg, 0, 0, 64, 64);
-            ctx.drawImage(skinImg, 8, 8, 8, 8, 28, 4, 8, 8);
-            ctx.drawImage(skinImg, 40, 8, 8, 8, 28, 4, 8, 8);
+            ctx.drawImage(skinImg, 4, 4, 56, 56);
         };
         skinImg.src = event.target.result;
     };
@@ -69,13 +62,21 @@ downloadBtn.addEventListener('click', async () => {
         const safeFileName = `${packName.replace(/[^a-z0-9]/gi, '_')}.mcpack`;
         const cleanName = packName.replace(/_/g, ' ');
         const newZip = templateZip.clone();
-        const rawSkinBlob = await fetch(skinImg.src).then(res => res.blob());
-        const entity = newZip.folder('textures/entity');
-        entity.file('totem.png', rawSkinBlob);
-        canvas.toBlob(async (editedBlob) => {
+
+        const iconCanvas = document.createElement('canvas');
+        iconCanvas.width = 16;
+        iconCanvas.height = 16;
+        const iconCtx = iconCanvas.getContext('2d');
+        iconCtx.drawImage(skinImg, 8, 8, 8, 8, 0, 0, 16, 16);
+        iconCtx.drawImage(skinImg, 40, 8, 8, 8, 0, 0, 16, 16);
+
+        iconCanvas.toBlob(async (iconBlob) => {
+            const entity = newZip.folder('textures/entity');
+            entity.file('totem.png', iconBlob);
             const items = newZip.folder('textures/items');
-            items.file('totem.png', editedBlob);
-            newZip.file('pack_icon.png', editedBlob);
+            items.file('totem.png', iconBlob);
+            newZip.file('pack_icon.png', iconBlob);
+
             const manifestFile = newZip.file('manifest.json');
             if (!manifestFile) throw new Error('manifest.json missing');
             const manifest = JSON.parse(await manifestFile.async('string'));
@@ -86,6 +87,7 @@ downloadBtn.addEventListener('click', async () => {
                 manifest.modules.forEach(mod => { mod.uuid = uuidv4(); });
             }
             newZip.file('manifest.json', JSON.stringify(manifest, null, 4));
+
             const content = await newZip.generateAsync({
                 type: 'blob',
                 compression: 'DEFLATE',
