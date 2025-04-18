@@ -1,0 +1,48 @@
+<!DOCTYPE html><html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>3D Totem Skin Generator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-id-badge"></i> Skin Totem Generator</h1>
+            <button id="theme-toggle"><i class="fas fa-moon"></i></button>
+        </header><main>
+        <div class="config-section">
+            <div class="input-group">
+                <label for="pack-name"><i class="fas fa-tag"></i> Pack Name</label>
+                <input type="text" id="pack-name" placeholder="MyTotemPack">
+            </div>
+
+            <div class="controls">
+                <label class="file-upload btn-secondary">
+                    <i class="fas fa-user"></i> Upload Skin
+                    <input type="file" id="skin-input" accept="image/*">
+                </label>
+                <button id="download-btn" class="btn-primary">
+                    <i class="fas fa-download"></i> Generate .mcpack
+                </button>
+            </div>
+        </div>
+        <div id="status" class="status-info">
+            <i class="fas fa-spinner fa-spin"></i> Loading template...
+        </div>
+
+        <div class="preview-container">
+            <canvas id="totem-canvas" width="64" height="64"></canvas>
+            <p class="preview-text"><i class="fas fa-info-circle"></i> Totem Texture Preview (64x64 pixels)</p>
+        </div>
+    </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>
