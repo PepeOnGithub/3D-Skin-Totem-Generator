@@ -2,6 +2,14 @@ const themeToggle = document.getElementById('theme-toggle');
 const body = document.body;
 let templateZip = null;
 let uploadedImageBlob = null;
+let totemBaseImg = new Image();
+const status = document.getElementById('status');
+const skinInput = document.getElementById('skin-input');
+const downloadBtn = document.getElementById('download-btn');
+const packNameInput = document.getElementById('pack-name');
+const canvas = document.getElementById('totem-canvas');
+const ctx = canvas.getContext('2d');
+let skinImg = new Image();
 
 themeToggle.addEventListener('click', () => {
     body.classList.toggle('dark');
@@ -26,32 +34,27 @@ function uuidv4() {
             templateZip = await JSZip.loadAsync(buffer);
             localStorage.setItem('cachedTotemTemplate', btoa(String.fromCharCode(...new Uint8Array(buffer))));
         }
-        if (!templateZip.file('textures/entity/totem.png')) {
-            throw new Error('Template missing required files');
-        }
-        document.getElementById('status').textContent = 'Ready to generate!';
+        if (!templateZip.file('textures/entity/totem.png')) throw new Error('Template missing required files');
+        const baseBlob = await templateZip.file('textures/items/totem.png').async('blob');
+        totemBaseImg.src = URL.createObjectURL(baseBlob);
+        status.textContent = 'Ready to generate!';
     } catch (error) {
         console.error('Template error:', error);
         alert(`Template loading failed: ${error.message}`);
     }
 })();
 
-const status = document.getElementById('status');
-const skinInput = document.getElementById('skin-input');
-const downloadBtn = document.getElementById('download-btn');
-const packNameInput = document.getElementById('pack-name');
-const canvas = document.getElementById('totem-canvas');
-const ctx = canvas.getContext('2d');
-let skinImg = new Image();
-
 skinInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = function(event) {
+    reader.onload = (event) => {
         skinImg.onload = () => {
+            if (!totemBaseImg.complete) return totemBaseImg.onload = skinImg.onload;
             ctx.clearRect(0, 0, 64, 64);
-            ctx.drawImage(skinImg, 4, 4, 56, 56); // Center inside 64x64
+            ctx.drawImage(totemBaseImg, 0, 0, 64, 64);
+            ctx.drawImage(skinImg, 8, 8, 8, 8, 28, 4, 8, 8);
+            ctx.drawImage(skinImg, 40, 8, 8, 8, 28, 4, 8, 8);
         };
         skinImg.src = event.target.result;
     };
@@ -61,27 +64,18 @@ skinInput.addEventListener('change', (e) => {
 downloadBtn.addEventListener('click', async () => {
     if (!templateZip) return alert('Template still loading...');
     if (!skinImg.src) return alert('Please upload a skin image first.');
-
     try {
         const packName = packNameInput.value.trim() || 'MyTotemPack';
         const safeFileName = `${packName.replace(/[^a-z0-9]/gi, '_')}.mcpack`;
         const cleanName = packName.replace(/_/g, ' ');
-
-        // Clone the template ZIP to modify it
         const newZip = templateZip.clone();
-
-        // 1. Save raw uploaded skin to textures/entity/totem.png
         const rawSkinBlob = await fetch(skinImg.src).then(res => res.blob());
         const entity = newZip.folder('textures/entity');
         entity.file('totem.png', rawSkinBlob);
-
-        // 2. Save edited version from canvas to textures/items/totem.png and pack_icon.png
         canvas.toBlob(async (editedBlob) => {
             const items = newZip.folder('textures/items');
             items.file('totem.png', editedBlob);
             newZip.file('pack_icon.png', editedBlob);
-
-            // Update manifest.json
             const manifestFile = newZip.file('manifest.json');
             if (!manifestFile) throw new Error('manifest.json missing');
             const manifest = JSON.parse(await manifestFile.async('string'));
@@ -92,8 +86,6 @@ downloadBtn.addEventListener('click', async () => {
                 manifest.modules.forEach(mod => { mod.uuid = uuidv4(); });
             }
             newZip.file('manifest.json', JSON.stringify(manifest, null, 4));
-
-            // Create and save the .mcpack file
             const content = await newZip.generateAsync({
                 type: 'blob',
                 compression: 'DEFLATE',
