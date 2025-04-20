@@ -64,6 +64,7 @@
     }
     .file-status {
       margin: 0.5rem 0;
+      font-family: monospace;
     }
     a.download-link {
       display: inline-block;
@@ -78,7 +79,7 @@
   <button class="toggle" id="themeToggle">Toggle Dark/Light</button>
   <div class="container">
     <h1>MCPack Bulk Deobfuscator</h1>
-    <p>Select one or more <code>.mcpack</code> files (or any packed file) to deobfuscate and validate:</p>
+    <p>Select one or more <code>.mcpack</code> files (or any .zip) to deobfuscate and validate:</p>
     <input type="file" id="fileInput" multiple />
     <button class="process" id="processBtn">Process Files</button>
     <div class="output" id="output"></div>
@@ -93,16 +94,11 @@
     const output = document.getElementById('output');
 
     function decodeUnicode(str) {
-      return str.replace(/\\u[0-9a-fA-F]{4}/g, (match) => {
-        return String.fromCharCode(parseInt(match.replace('\\u',''), 16));
-      });
+      return str.replace(/\\u[0-9a-fA-F]{4}/g, (match) => String.fromCharCode(parseInt(match.replace('\\u',''), 16)));
     }
 
     processBtn.addEventListener('click', async () => {
       output.innerHTML = '';
-      const zip = new JSZip();
-      const outZip = new JSZip();
-
       const files = fileInput.files;
       if (!files.length) {
         output.textContent = 'No files selected.';
@@ -110,54 +106,79 @@
       }
 
       for (let file of files) {
+        const statusHeader = document.createElement('div');
+        statusHeader.className = 'file-status';
+        statusHeader.textContent = `Processing pack: ${file.name}`;
+        output.appendChild(statusHeader);
+
         try {
-          const content = await file.text();
-          // Attempt unzip if .mcpack (zip) format
           const isZip = file.name.endsWith('.mcpack') || file.name.endsWith('.zip');
-          if (isZip) {
-            const pack = await JSZip.loadAsync(await file.arrayBuffer());
-            for (let relativePath in pack.files) {
-              const entry = pack.files[relativePath];
-              if (!entry.dir) {
-                const text = await entry.async('string');
-                const decoded = decodeUnicode(text);
-                let valid = true;
-                try { JSON.parse(decoded); } catch(e) { valid = false; }
-                const pretty = valid ? JSON.stringify(JSON.parse(decoded), null, 2) : decoded;
-                outZip.file(relativePath.replace(/[^a-z0-9\.\-\_]/gi, '_') + '.json', pretty);
-                const status = document.createElement('div');
-                status.className = 'file-status';
-                status.textContent = `${relativePath}: ${valid ? '✅ Valid JSON' : '⚠️ Invalid JSON, output as text'}`;
-                output.appendChild(status);
-              }
-            }
-          } else {
-            // treat as single file
-            const decoded = decodeUnicode(content);
-            let valid = true;
-            try { JSON.parse(decoded); } catch(e) { valid = false; }
-            const pretty = valid ? JSON.stringify(JSON.parse(decoded), null, 2) : decoded;
-            outZip.file(file.name.replace(/[^a-z0-9\.\-\_]/gi, '_') + '.json', pretty);
+          if (!isZip) {
             const status = document.createElement('div');
             status.className = 'file-status';
-            status.textContent = `${file.name}: ${valid ? '✅ Valid JSON' : '⚠️ Invalid JSON, output as text'}`;
+            status.textContent = `${file.name}: ❌ Not a .mcpack or .zip, skipped.`;
             output.appendChild(status);
+            continue;
           }
+
+          const pack = await JSZip.loadAsync(await file.arrayBuffer());
+          const outZip = new JSZip();
+
+          // recreate folders and files
+          for (let path in pack.files) {
+            const entry = pack.files[path];
+            if (entry.dir) {
+              outZip.folder(path);
+            } else {
+              const lower = path.toLowerCase();
+              if (lower.endsWith('.ogg')) {
+                // copy audio as binary
+                const data = await entry.async('uint8array');
+                outZip.file(path, data);
+                continue;
+              }
+
+              // read as text
+              const text = await entry.async('string');
+              const decoded = decodeUnicode(text);
+              let isJson = false;
+              let pretty = decoded;
+              try {
+                const obj = JSON.parse(decoded);
+                pretty = JSON.stringify(obj, null, 2);
+                isJson = true;
+              } catch (e) {
+                // not JSON
+              }
+
+              if (isJson) {
+                outZip.file(path, pretty);
+                const status = document.createElement('div');
+                status.className = 'file-status';
+                status.textContent = `${path}: ✅ Deobfuscated JSON`;
+                output.appendChild(status);
+              } else {
+                // non-JSON, non-ogg -> copy raw
+                const data = await entry.async('uint8array');
+                outZip.file(path, data);
+              }
+            }
+          }
+
+          const blob = await outZip.generateAsync({ type: 'blob' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = file.name.replace(/\.(zip|mcpack)$/i, '_deobf.mcpack');
+          link.textContent = `Download deobfuscated pack for ${file.name}`;
+          link.className = 'download-link';
+          output.appendChild(link);
         } catch (err) {
           const status = document.createElement('div');
           status.className = 'file-status';
-          status.textContent = `${file.name}: ❌ Error processing`;
+          status.textContent = `${file.name}: ❌ Error processing: ${err.message}`;
           output.appendChild(status);
         }
       }
-
-      const blob = await outZip.generateAsync({ type: 'blob' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'deobfuscated_pack.zip';
-      link.textContent = 'Download deobfuscated pack';
-      link.className = 'download-link';
-      output.appendChild(link);
     });
   </script></body>
 </html>
